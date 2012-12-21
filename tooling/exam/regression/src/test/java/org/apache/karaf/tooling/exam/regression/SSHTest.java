@@ -17,6 +17,8 @@
 package org.apache.karaf.tooling.exam.regression;
 
 import org.apache.karaf.tooling.exam.container.internal.runner.KarafTestRunner;
+import org.apache.karaf.tooling.exam.options.ConfigurationPointer;
+import org.apache.karaf.tooling.exam.options.configs.ManagementCfg;
 import org.apache.sshd.ClientSession;
 import org.apache.sshd.SshClient;
 import org.apache.sshd.client.future.ConnectFuture;
@@ -25,8 +27,10 @@ import org.junit.runner.RunWith;
 import org.ops4j.pax.exam.Option;
 import org.ops4j.pax.exam.junit.Configuration;
 
+import java.io.File;
 import java.util.concurrent.TimeUnit;
 
+import static org.apache.karaf.tooling.exam.options.KarafDistributionOption.editConfigurationFilePut;
 import static org.apache.karaf.tooling.exam.options.KarafDistributionOption.karafDistributionConfiguration;
 import static org.ops4j.pax.exam.CoreOptions.maven;
 
@@ -46,13 +50,28 @@ public class SSHTest {
         };
     }
 
+    @Configuration
+    public Option[] config2() {
+        return new Option[]{
+                karafDistributionConfiguration().frameworkUrl(
+                        maven().groupId("org.apache.karaf").artifactId("apache-karaf").type("zip").versionAsInProject())
+                        .unpackDirectory(new File("target/karaf2")),
+                karafDistributionConfiguration().frameworkUrl(
+                        maven().groupId("org.apache.karaf").artifactId("apache-karaf").type("zip").version(version))
+                        .karafVersion(version).name("Apache Karaf")
+                        .unpackDirectory(new File("target/karaf2")),
+                editConfigurationFilePut(new ConfigurationPointer("etc/org.apache.karaf.shell.cfg", "sshPort"), "8102"),
+                editConfigurationFilePut(ManagementCfg.RMI_REGISTRY_PORT, "1100"),
+                editConfigurationFilePut(ManagementCfg.RMI_SERVER_PORT, "44445")
+        };
+    }
+
     @Test
     public void connectViaSSH_shouldWork() throws Exception {
         String host = "localhost";
-        int port = 8101;
         SshClient client = SshClient.setUpDefaultClient();
         client.start();
-        ConnectFuture connectFuture = client.connect(host, port);
+        ConnectFuture connectFuture = client.connect(host, 8102);
         if (!connectFuture.await(30, TimeUnit.SECONDS)) {
             throw (Exception) connectFuture.getException();
         }

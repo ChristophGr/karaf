@@ -35,6 +35,7 @@
 
 package org.apache.karaf.tooling.exam.container.internal.runner;
 
+import com.google.common.collect.Sets;
 import org.junit.runner.notification.RunNotifier;
 import org.junit.runners.BlockJUnit4ClassRunner;
 import org.junit.runners.model.FrameworkMethod;
@@ -61,20 +62,20 @@ import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class KarafTestRunner extends BlockJUnit4ClassRunner {
 
     private static Logger LOG = LoggerFactory.getLogger(BlockJUnit4ClassRunner.class);
 
-    private final Map<FrameworkMethod, TestContainer> children = new HashMap<FrameworkMethod, TestContainer>();
+    private final Map<FrameworkMethod, List<TestContainer>> children = new HashMap<FrameworkMethod, List<TestContainer>>();
 
     private ExamSystem m_system;
-    private List<Option[]> configs = new LinkedList<Option[]>();
 
     public KarafTestRunner(Class<?> klass) throws Exception {
         super(klass);
@@ -116,47 +117,63 @@ public class KarafTestRunner extends BlockJUnit4ClassRunner {
         }
         Class<?> testClass = getTestClass().getJavaClass();
         Object testClassInstance = testClass.newInstance();
-        addConfigurationsToList(testClass, testClassInstance);
         TestContainerFactory factory = getExamFactory(testClass);
-        Option[] config = configs.get(0); // only support one config-method for now
-        TestContainer[] testContainers = factory.create(m_system.fork(config));
-        addTestsToReactor(testContainers);
+        List<Set<TestContainer>> containersByConfig = new ArrayList<Set<TestContainer>>();
+        for (Option[] config : getAllConfigs(testClass, testClassInstance)) {
+            TestContainer[] testContainers = factory.create(m_system.fork(config));
+            containersByConfig.add(Sets.newHashSet(testContainers));
+        }
+        // make sure to create a test-case for each combination of containers
+        Set<List<TestContainer>> combos = Sets.cartesianProduct(containersByConfig);
+        for (List<TestContainer> containers : combos) {
+            addTestsToReactor(containers);
+        }
     }
 
-    private void addConfigurationsToList(Class<?> testClass, Object testClassInstance)
+    private List<Option[]> getAllConfigs(Class<?> testClass, Object testClassInstance)
             throws IllegalAccessException, InvocationTargetException, IllegalArgumentException, IOException {
+        List<Option[]> result = new ArrayList<Option[]>();
         Method[] methods = testClass.getMethods();
         for (Method m : methods) {
             Configuration conf = m.getAnnotation(Configuration.class);
             if (conf != null) {
-                configs.add(((Option[]) m.invoke(testClassInstance)));
+                result.add(((Option[]) m.invoke(testClassInstance)));
             }
         }
+        return result;
     }
 
-    private void addTestsToReactor(TestContainer[] containers) throws IOException, ExamConfigurationException {
+    private String makeTestContainerListCaption(List<TestContainer> containers) {
+        StringBuilder result = new StringBuilder();
+        for (TestContainer tc : containers) {
+            result.append(tc.toString());
+            result.append("+");
+        }
+        result.deleteCharAt(result.length() - 1);
+        return result.toString();
+    }
+
+    private void addTestsToReactor(List<TestContainer> containers) throws IOException, ExamConfigurationException {
         for (final FrameworkMethod frameworkMethod : super.getChildren()) {
-            for (final TestContainer tc : containers) {
-                final DefaultTestAddress address = new DefaultTestAddress(tc.toString(), tc, frameworkMethod);
-                // now, someone later may refer to that artificial FrameworkMethod. We need to be able to tell the address.
-                FrameworkMethod method = new FrameworkMethod(frameworkMethod.getMethod()) {
-                    @Override
-                    public String getName() {
-                        return frameworkMethod.getName() + ":" + address.caption();
-                    }
+            final DefaultTestAddress address = new DefaultTestAddress(makeTestContainerListCaption(containers), containers, frameworkMethod);
+            // now, someone later may refer to that artificial FrameworkMethod. We need to be able to tell the address.
+            FrameworkMethod method = new FrameworkMethod(frameworkMethod.getMethod()) {
+                @Override
+                public String getName() {
+                    return frameworkMethod.getName() + ":" + address.caption();
+                }
 
-                    @Override
-                    public boolean equals(Object obj) {
-                        return address.equals(obj);
-                    }
+                @Override
+                public boolean equals(Object obj) {
+                    return address.equals(obj);
+                }
 
-                    @Override
-                    public int hashCode() {
-                        return address.hashCode();
-                    }
-                };
-                children.put(method, tc);
-            }
+                @Override
+                public int hashCode() {
+                    return address.hashCode();
+                }
+            };
+            children.put(method, containers);
         }
     }
 
@@ -178,12 +195,16 @@ public class KarafTestRunner extends BlockJUnit4ClassRunner {
         return new Statement() {
             @Override
             public void evaluate() throws Throwable {
-                TestContainer testContainer = children.get(method);
-                // Start container
-                testContainer.start();
+                List<TestContainer> testContainers = children.get(method);
+                for (TestContainer testContainer : testContainers) {
+                    // Start containers
+                    testContainer.start();
+                }
                 method.invokeExplosively(test);
-                // Stop Container
-                testContainer.stop();
+                for (TestContainer testContainer : testContainers) {
+                    // Stop Containers
+                    testContainer.stop();
+                }
             }
         };
     }
