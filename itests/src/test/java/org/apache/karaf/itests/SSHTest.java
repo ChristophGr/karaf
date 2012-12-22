@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.karaf.tooling.exam.regression;
+package org.apache.karaf.itests;
 
 import org.apache.karaf.tooling.exam.container.internal.runner.KarafTestRunner;
 import org.apache.karaf.tooling.exam.options.ConfigurationPointer;
