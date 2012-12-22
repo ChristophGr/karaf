@@ -48,10 +48,8 @@ import org.ops4j.pax.exam.Option;
 import org.ops4j.pax.exam.TestContainer;
 import org.ops4j.pax.exam.TestContainerException;
 import org.ops4j.pax.exam.TestContainerFactory;
-import org.ops4j.pax.exam.TestProbeBuilder;
 import org.ops4j.pax.exam.junit.Configuration;
 import org.ops4j.pax.exam.junit.ExamFactory;
-import org.ops4j.pax.exam.junit.ProbeBuilder;
 import org.ops4j.pax.exam.spi.DefaultExamSystem;
 import org.ops4j.pax.exam.spi.PaxExamRuntime;
 import org.ops4j.pax.exam.spi.intern.DefaultTestAddress;
@@ -59,7 +57,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -99,12 +96,6 @@ public class KarafTestRunner extends BlockJUnit4ClassRunner {
     @Override
     protected List<FrameworkMethod> getChildren() {
         return Arrays.asList(children.keySet().toArray(new FrameworkMethod[children.size()]));
-    }
-
-    @Override
-    protected void collectInitializationErrors
-            (List<Throwable> errors) {
-        // do nothing
     }
 
     private synchronized void prepareReactor() throws Exception {
@@ -207,37 +198,6 @@ public class KarafTestRunner extends BlockJUnit4ClassRunner {
                 }
             }
         };
-    }
-
-    @Override
-    protected void validatePublicVoidNoArgMethods(Class<? extends Annotation> annotation, boolean isStatic, List<Throwable> errors) {
-
-    }
-
-    private TestProbeBuilder overwriteWithUserDefinition(Class<?> testClass, Object instance, TestProbeBuilder probe)
-            throws ExamConfigurationException {
-        Method[] methods = testClass.getMethods();
-        for (Method m : methods) {
-            ProbeBuilder conf = m.getAnnotation(ProbeBuilder.class);
-            if (conf != null) {
-                // consider as option, so prepare that one:
-                LOG.debug("User defined probe hook found: " + m.getName());
-                TestProbeBuilder probeBuilder;
-                try {
-                    probeBuilder = (TestProbeBuilder) m.invoke(instance, probe);
-                } catch (Exception e) {
-                    throw new ExamConfigurationException("Invoking custom probe hook " + m.getName() + " failed", e);
-                }
-                if (probeBuilder != null) {
-                    return probe;
-                } else {
-                    throw new ExamConfigurationException("Invoking custom probe hook " + m.getName() + " succeeded but returned null");
-                }
-
-            }
-        }
-        LOG.debug("No User defined probe hook found");
-        return probe;
     }
 
 }
